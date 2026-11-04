@@ -281,7 +281,7 @@ class SpeechStream(stt.SpeechStream):
     @property
     def delay_in_tokens(self) -> int:
         if self._ready_msg is not None:
-            return int(self._ready_msg.get("delay_in_tokens", 6))
+            return int(self._ready_msg.get("delay_in_frames", 6))
         return 6
 
     @property

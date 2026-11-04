@@ -361,6 +361,36 @@ async def test_vad_start_of_speech_without_text_still_ends_the_turn():
 
 
 @pytest.mark.asyncio
+async def test_vad_countdown_uses_the_server_delay_in_frames():
+    """The end-of-turn countdown follows delay_in_frames from the ready message."""
+    from livekit.agents.stt import SpeechEventType
+    from livekit.plugins.gradium import STT
+
+    session = _FakeSession()
+    stt = STT(api_key="test-key", http_session=session, vad_start_threshold=0.4)
+    stream = stt.stream()
+    collector = _EventCollector(stream)
+    try:
+        session.ws.incoming.put_nowait({"type": "ready", "frame_size": 1920, "delay_in_frames": 10})
+        session.ws.incoming.put_nowait(_step(0.2))
+        # the first positive step starts the countdown, 10 more end the turn
+        for _ in range(10):
+            session.ws.incoming.put_nowait(_step(0.95))
+        await collector.drain(session.ws)
+        assert [ev.type for ev in collector.events] == [SpeechEventType.START_OF_SPEECH]
+
+        session.ws.incoming.put_nowait(_step(0.95))
+        events = await collector.wait_for(3)
+        assert [ev.type for ev in events] == [
+            SpeechEventType.START_OF_SPEECH,
+            SpeechEventType.FINAL_TRANSCRIPT,
+            SpeechEventType.END_OF_SPEECH,
+        ]
+    finally:
+        await stream.aclose()
+
+
+@pytest.mark.asyncio
 async def test_vad_start_of_speech_is_off_by_default():
     """Without vad_start_threshold, speech only starts on the first transcribed text."""
     from livekit.agents.stt import SpeechEventType
